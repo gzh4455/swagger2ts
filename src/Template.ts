@@ -12,6 +12,7 @@ class Template {
     constructor() {
         //当前controller用到的ts类型
         this.cacheInterfaces = {};
+        //当前controller用到的方法
         this.methodTemps = '';
     }
 
