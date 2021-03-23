@@ -19,7 +19,6 @@ class SwaggerApi {
         //获取swagger配置的json
         const {data} = await axios.get('http://172.26.8.82:8062/v2/api-docs')
         const {definitions, info, host, paths, tags} = data;
-
         this.definitions = definitions
         const apiPathsArr = Reflect.ownKeys(paths);
         apiPathsArr.forEach((apiPath: string) => {
