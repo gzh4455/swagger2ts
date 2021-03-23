@@ -1,13 +1,17 @@
 import {Definition, Controller, Method, methodType} from './types/interface'
 import {capitalizedTitleCase} from './utils'
 
+const fse = require('fs-extra');
+const prettier = require("prettier");
+
 class Template {
 
+    public definitions: Definition
+    public controllerName: string
     public methodTemps: string
     public cacheInterfaces: {
         [k: string]: Object
     }
-    public definitions: Definition
 
     constructor() {
         //当前controller用到的ts类型
@@ -17,12 +21,13 @@ class Template {
     }
 
     //单个controller
-    emitController(controller: Controller, definitions: Definition) {
+    emitController(controllerName: string, controller: Controller, definitions: Definition) {
+        this.controllerName = controllerName
         this.definitions = definitions
         Reflect.ownKeys(controller).forEach((pathKey: string) => {
             const thisMethod = controller[pathKey];
             const {type, summary, parameters, operationId, response} = thisMethod;
-            const methodName = type === 'get' ? `get${capitalizedTitleCase(pathKey)}` : pathKey;
+            const methodName = type === 'get' ? `${capitalizedTitleCase(pathKey)}` : pathKey;
 
             this.emitMethods(
                 {
@@ -34,24 +39,35 @@ class Template {
                 }
             )
         })
-        console.log(this.cacheInterfaces);
-        console.log(this.methodTemps);
-        debugger
+        this.methodTemps = prettier.format(this.methodTemps, {parser: 'typescript'});
+
+        Reflect.ownKeys(this.cacheInterfaces).forEach((interfaceKey: string) => {
+            console.log(interfaceKey);
+            console.log(this.cacheInterfaces);
+            this.methodTemps += this.emitInterfaces({
+                name: interfaceKey,
+                properties: this.cacheInterfaces[interfaceKey]
+            })
+        })
+
+        this.emitFile()
+        // console.log(this.methodTemps);
     }
 
     //单个方法生成
     emitMethods(method: Method) {
         const {methodName, summary, parameters, methodType, response} = method;
         const paramsTemp = this.methodReqParams({methodType, parameters})
+        const responseKey = this.getInterfaceKey(response)
         const methodTemp = `
             /**
              * ${summary || ''}
              */
-            export async function ${methodName}(){
-                ${paramsTemp || ''} 
-            }):Promise<${response}Res>{
-                const result = await sdk.${methodType}<${response}Res>(
-                    /list,
+            export async function ${methodType + methodName}(params:{
+                ${paramsTemp || ''}
+            }):Promise<${responseKey || ''}>{
+                const result = await sdk.${methodType}<${responseKey || ''}>(
+                    '/list',
                     {},
                     {},
                     {}
@@ -60,7 +76,8 @@ class Template {
             }         
         `
         this.methodTemps += `\n${methodTemp}`
-        this.transformInterface(response)
+        response && this.transformInterface(response)
+
     }
 
     //请求的参数模版
@@ -86,7 +103,6 @@ class Template {
 
     //类型名称转换 并缓存要生成的TS接口
     transformInterface($ref: string) {
-        console.log($ref);
         const thisRef = this.getDefinitionKey($ref);
         const thisRefDefinition = this.definitions[thisRef];
         this.recurseTsInterface(thisRefDefinition)
@@ -109,25 +125,25 @@ class Template {
                     this.recurseTsInterface($ref)
                     simpleStr += `${properKey}:${this.getDefinitionKey($ref)}`
                     isSimple = false;
-                }else{
-                    simpleStr += this.getSimpleTs({name:properKey,...thisProperty})
+                } else {
+                    simpleStr += this.getSimpleTs({name: properKey, ...thisProperty})
                 }
             })
-            if(isSimple){
+            if (isSimple) {
                 this.cacheInterfaces[simpleKey] = simpleStr
             }
         } else {
-            const definitionKey = this.getDefinitionKey(definition)
+            const definitionKey = this.getDefinitionKey(definition);
+            const interfaceKey = this.getInterfaceKey(definition)
             if (!this.cacheInterfaces[definitionKey]) {
-                const properties = this.definitions[definitionKey].properties;
-                this.cacheInterfaces[definitionKey] =
+                const properties = this.definitions[definitionKey]?.properties || {};
+                this.cacheInterfaces[interfaceKey] =
                     Reflect.ownKeys(properties).reduce((p: string, paramKey) => {
                         const param = properties[paramKey];
                         param.name = paramKey
                         p += this.getSimpleTs(param)
                         return p
                     }, '')
-
             }
         }
     }
@@ -138,20 +154,26 @@ class Template {
     }
 
     //单个类型定义
-    emitInterfaces() {
-
+    emitInterfaces({name, properties}) {
+        return `export interface ${name}{
+            ${properties}
+        }`
     }
 
     getDefinitionKey($ref): string {
-        const lastRefKey =  $ref.split('/').slice(-1)[0];
-        //TODO
-        const matched = lastRefKey?.match(/«.+»/);
-        return lastRefKey;
+        return $ref.split('/').slice(-1)[0];
+    }
+
+    //接口的Key
+    getInterfaceKey($ref): string {
+        const lastRefKey = $ref.split('/').slice(-1)[0];
+        const matched = lastRefKey?.match(/(?<=«)[^«»]+(?=»)/);
+        return matched ? matched[0] : lastRefKey
     }
 
     getSimpleTs(param) {
         return `/*${param?.description || ''}*/
-                ${param.name}${param.required ? ':' : '?:'}${param.type}`
+                ${param.name}${param.required ? ':' : '?:'}${param.type === 'integer' ? 'number' : param.type}\n`
     }
 
     getQuoteTs(param, temp) {
@@ -159,6 +181,18 @@ class Template {
                 ${param.name}${param.required ? ':' : '?:'}${temp}`
     }
 
+    //生成文件
+    emitFile() {
+        const {cacheInterfaces, methodTemps, controllerName} = this;
+        fse.mkdir('./api');
+        const file = `./api/${controllerName}.ts`;
+        fse.outputFile(file, methodTemps, 'utf8')
+    }
+
+
+}
+
+interface template {
 
 }
 

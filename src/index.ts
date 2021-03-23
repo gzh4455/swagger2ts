@@ -6,7 +6,7 @@ class SwaggerApi {
 
     public cacheControllers: any
 
-    public definitions:  Definition
+    public definitions: Definition
 
     constructor() {
         this.run()
@@ -28,7 +28,7 @@ class SwaggerApi {
             const restfuls = Reflect.ownKeys(selfApi);
             restfuls.forEach((restfulType) => {
                 const selfRestful = selfApi[restfulType];
-                const {tags, parameters, operationId,summary,responses} = selfRestful;
+                const {tags, parameters, operationId, summary, responses} = selfRestful;
                 const controllersName = selfRestful.tags[0];
                 const cacheController = this.cacheControllers[controllersName];
                 if (cacheController) {
@@ -40,7 +40,7 @@ class SwaggerApi {
                         type: restfulType,
                         summary,
                         parameters,
-                        response:responses['200'].schema?.$ref,
+                        response: responses['200'].schema?.$ref,
                         operationId,
                         tags: tags[0]
                     }
@@ -56,13 +56,15 @@ class SwaggerApi {
     }
 
     // 单个controller处理
-    getController(){
-        const {cacheControllers , definitions} = this;
+    getController() {
+        const {cacheControllers, definitions} = this;
         const controllerTemp = new Template();
-        Reflect.ownKeys(cacheControllers).forEach(controllerKey=>{
+        Reflect.ownKeys(cacheControllers).forEach((controllerKey:string)=> {
             const thisController = cacheControllers[controllerKey];
             controllerTemp.emitController(
-                thisController,definitions
+                controllerKey,
+                thisController,
+                definitions
             )
         })
     }
